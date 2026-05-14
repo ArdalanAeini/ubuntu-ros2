@@ -2,11 +2,11 @@
 UR5 implementation of RobotArm, talking to Gazebo simulation via ROS 2.
 
 Architecture:
-- ROS 2 communicates via "topics" (continuous data) and "actions" (long-running goals).
-- Reading joint angles -> subscribe to /joint_states TOPIC.
-- Commanding motion -> send a goal to the FollowJointTrajectory ACTION.
-- We run the rclpy executor in a background thread so the main thread
-  can call simple blocking methods like move_to_joint_positions().
+  - ROS 2 communicates via "topics" (continuous data) and "actions" (long-running goals).
+  - Reading joint angles -> subscribe to /joint_states TOPIC.
+  - Commanding motion -> send a goal to the FollowJointTrajectory ACTION.
+  - We run the rclpy executor in a background thread so the main thread
+    can call simple blocking methods like move_to_joint_positions().
 """
 
 import threading
@@ -18,6 +18,7 @@ import rclpy
 from rclpy.node import Node
 from rclpy.action import ActionClient
 from rclpy.executors import SingleThreadedExecutor
+
 from sensor_msgs.msg import JointState
 from control_msgs.action import FollowJointTrajectory
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
@@ -57,6 +58,7 @@ class UR5GazeboArm(RobotArm):
 
         # Kinematics — used by move_to_xyz().
         self._kin = RobotKinematics(urdf_path, UR5_JOINT_NAMES)
+
     @property
     def num_joints(self) -> int:
         return 6
@@ -109,12 +111,47 @@ class UR5GazeboArm(RobotArm):
             raise RuntimeError("No /joint_states received in 5s.")
 
     def disconnect(self) -> None:
+        """
+        Clean shutdown sequence.
+
+        Bug history: previously we just called executor.shutdown() and
+        rclpy.shutdown() without waiting for the spin thread to actually
+        exit, which caused 'terminate called without an active exception
+        / Aborted (core dumped)' on script exit. The C++ side aborted
+        because Python destroyed the executor while it was still spinning.
+
+        Fix: explicitly shut down the executor, JOIN the spin thread with
+        a timeout, then destroy the node, then shutdown rclpy. Order matters.
+        """
+        try:
+            if self._action_client is not None:
+                self._action_client.destroy()
+                self._action_client = None
+        except Exception:
+            pass
+
         if self._executor is not None:
-            self._executor.shutdown()
+            try:
+                self._executor.shutdown()
+            except Exception:
+                pass
+
+        if self._spin_thread is not None and self._spin_thread.is_alive():
+            self._spin_thread.join(timeout=2.0)
+            self._spin_thread = None
+
         if self._node is not None:
-            self._node.destroy_node()
+            try:
+                self._node.destroy_node()
+            except Exception:
+                pass
+            self._node = None
+
         if rclpy.ok():
-            rclpy.shutdown()
+            try:
+                rclpy.shutdown()
+            except Exception:
+                pass
 
     # ---------- Subscriber callback ----------
 
@@ -169,6 +206,7 @@ class UR5GazeboArm(RobotArm):
         send_future = self._action_client.send_goal_async(goal)
         while not send_future.done():
             time.sleep(0.01)
+
         goal_handle = send_future.result()
         if not goal_handle.accepted:
             self._node.get_logger().error("Goal rejected by controller.")
@@ -178,9 +216,11 @@ class UR5GazeboArm(RobotArm):
         result_future = goal_handle.get_result_async()
         while not result_future.done():
             time.sleep(0.01)
+
         result = result_future.result().result
         return result.error_code == 0
-        # ---------- Cartesian motion via IK ----------
+
+    # ---------- Cartesian motion via IK ----------
 
     def move_to_xyz(
         self,

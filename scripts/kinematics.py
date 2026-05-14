@@ -1,5 +1,5 @@
 """
-Kinematics module — robot-independent FK and IK.
+Kinematics module — robot-independent FK and IK
 
 Any robot whose geometry is described by a URDF can use this module.
 The robot-specific bits (URDF path, joint names) get passed in via the
