@@ -340,3 +340,82 @@ class WorldSpawner:
   </model>
 </sdf>"""
         return self._spawn_sdf(self._flatten(sdf))
+
+    def spawn_camera(
+        self,
+        x: float = 0.5,
+        y: float = 0.0,
+        z: float = 1.5,
+        pitch: float = 1.5708,  # 90° — pointing straight down
+        yaw: float = 0.0,
+        name: str = "overhead_camera",
+        topic: str = "/camera/image",
+        width: int = 640,
+        height: int = 480,
+        horizontal_fov: float = 1.047,  # ~60°
+        near_clip: float = 0.05,
+        far_clip: float = 5.0,
+        update_rate: float = 30.0,
+    ) -> bool:
+        """
+        Spawn a fixed overhead RGB camera looking down at the workspace.
+
+        Geometry:
+            Small black cube (visual placeholder, 5cm side) at (x, y, z).
+            A camera sensor on it, pointing straight down by default.
+
+        Frame convention in Gazebo cameras:
+            The camera looks along its local +X axis (this is the gz/SDF
+            convention). For a top-down view we therefore want +X to point
+            DOWN in the world — achieved by pitching the camera by +90°
+            (pi/2 rad) about Y.
+
+        Topic:
+            Published on gz-transport. To use it from ROS 2, run the bridge:
+                ros2 run ros_gz_image image_bridge /camera/image
+
+        Args:
+            x, y, z: position of the camera in the world.
+            pitch: rotation about Y axis (rad). 1.5708 ≈ +90° points camera down.
+            yaw: rotation about Z (rad). Use to spin the image horizontally.
+            topic: gz-transport topic on which images are published.
+            width, height: image resolution in pixels.
+            horizontal_fov: field of view in radians.
+            near_clip, far_clip: depth range in meters.
+            update_rate: frames per second.
+        """
+        sdf = f"""<?xml version="1.0" ?>
+<sdf version="1.9">
+  <model name="{name}">
+    <static>true</static>
+    <pose>{x} {y} {z} 0 {pitch} {yaw}</pose>
+    <link name="link">
+      <visual name="v">
+        <geometry><box><size>0.05 0.05 0.05</size></box></geometry>
+        <material>
+          <ambient>0.05 0.05 0.05 1</ambient>
+          <diffuse>0.05 0.05 0.05 1</diffuse>
+        </material>
+      </visual>
+      <sensor name="camera_sensor" type="camera">
+        <topic>{topic}</topic>
+        <update_rate>{update_rate}</update_rate>
+        <always_on>true</always_on>
+        <visualize>true</visualize>
+        <camera>
+          <horizontal_fov>{horizontal_fov}</horizontal_fov>
+          <image>
+            <width>{width}</width>
+            <height>{height}</height>
+            <format>R8G8B8</format>
+          </image>
+          <clip>
+            <near>{near_clip}</near>
+            <far>{far_clip}</far>
+          </clip>
+        </camera>
+      </sensor>
+    </link>
+  </model>
+</sdf>"""
+        return self._spawn_sdf(self._flatten(sdf))
