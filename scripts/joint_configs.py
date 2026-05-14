@@ -15,7 +15,7 @@ from robot_arm_base import JointPositions
 
 
 # All joints at zero. The arm points straight up — UR's "zero" pose.
-UR5_HOME = JointPositions.from_degrees([0, 0, 0, 0, 0, 0])
+UR5_HOME = JointPositions.from_degrees([0, -90, 0, -90, 0, 0])
 
 # A safe, compact "ready to work" pose. Elbow up, wrist neutral.
 # This is a common starting configuration for manipulation tasks.
